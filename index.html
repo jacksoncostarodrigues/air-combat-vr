@@ -117,11 +117,18 @@
       z-index: 10;
       display: none;
       border: 2px solid #e63946;
+      pointer-events: auto;
+      max-width: calc(100vw - 40px);
+      box-sizing: border-box;
     }
 
     #game-over h1 {
       color: #e63946;
       margin-top: 0;
+    }
+
+    #game-over button {
+      margin: 5px;
     }
   </style>
 </head>
@@ -795,12 +802,11 @@
     };
 
     document.getElementById('menu').onclick = () => {
-  resetGame();
-  running = false;
-
-  document.getElementById('start').textContent = 'INICIAR';
-  document.getElementById('game-over').style.display = 'none';
-};
+      resetGame();
+      running = false;
+      document.getElementById('start').textContent = 'INICIAR';
+      document.getElementById('game-over').style.display = 'none';
+    };
 
     document.addEventListener('keydown', event => {
       keys[event.key.toLowerCase()] = true;
@@ -819,7 +825,10 @@
         const supported = await navigator.xr.isSessionSupported('immersive-vr');
         if (!supported) { alert('Dispositivo sem suporte a VR imersivo.'); return; }
 
-        const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor'] });
+        const session = await navigator.xr.requestSession('immersive-vr', {
+          optionalFeatures: ['local-floor', 'dom-overlay'],
+          domOverlay: { root: document.body }
+        });
         await renderer.xr.setSession(session);
         if (health <= 0) resetGame();
         running = true;
