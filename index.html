@@ -146,7 +146,8 @@
 
   <div id="help">
     <b>PC:</b> W/S/A/D para Mover | Espaço para Atirar<br>
-    <b>VR:</b> Gatilho da Manete = Atirar | Analogico/Manete = Pilotar
+    <b>VR:</b> Gatilho = Atirar | Analógico = Pilotar<br>
+    <b>VR:</b> Aponte o controle para os botões do painel
   </div>
 
   <div id="aim">+</div>
@@ -158,12 +159,12 @@
   </div>
 
   <div id="game-over">
-  <h1>GAME OVER</h1>
-  <p>Sua nave foi destruída no espaço!</p>
-  <p>Pontuação Final: <span id="final-score">0</span></p>
+    <h1>GAME OVER</h1>
+    <p>Sua nave foi destruída no espaço!</p>
+    <p>Pontuação Final: <span id="final-score">0</span></p>
 
-  <button id="restart">JOGAR NOVAMENTE</button>
-  <button id="menu">VOLTAR AO MENU</button>
+    <button id="restart">JOGAR NOVAMENTE</button>
+    <button id="menu">VOLTAR AO MENU</button>
   </div>
 
   <script type="module">
@@ -181,8 +182,15 @@
     let hits = 0;
     let health = 100;
     let running = false;
+    let elapsedTime = 0;
+    let difficulty = 1;
 
+    const clock = new THREE.Clock();
     const keys = {};
+
+    // Vetores temporários (evita alocar no loop)
+    const _planeWorld = new THREE.Vector3();
+    const _tmpVec = new THREE.Vector3();
 
     // 1. Cena e Câmera
     scene = new THREE.Scene();
@@ -337,11 +345,11 @@
       scene.add(hyperspaceLines);
     }
 
-    function updateHyperspaceLines() {
+    function updateHyperspaceLines(k) {
       const posAttr = hyperspaceLines.geometry.attributes.position;
       for (let i = 0; i < posAttr.count; i += 2) {
-        let z1 = posAttr.getZ(i) + 1.8;
-        let z2 = posAttr.getZ(i + 1) + 1.8;
+        let z1 = posAttr.getZ(i) + 1.8 * k;
+        let z2 = posAttr.getZ(i + 1) + 1.8 * k;
 
         if (z1 > 10) {
           const x = (Math.random() - 0.5) * 80;
@@ -404,10 +412,10 @@
       explosions.push({ system: pSystem, velocities: velocities, life: 1.0 });
     }
 
-    function updateExplosions() {
+    function updateExplosions(k) {
       for (let i = explosions.length - 1; i >= 0; i--) {
         const exp = explosions[i];
-        exp.life -= 0.03;
+        exp.life -= 0.03 * k;
 
         if (exp.life <= 0) {
           scene.remove(exp.system);
@@ -422,13 +430,13 @@
 
         for (let j = 0; j < exp.velocities.length; j++) {
           const vel = exp.velocities[j];
-          vel.multiplyScalar(0.94);
+          vel.multiplyScalar(Math.pow(0.94, k));
 
           posAttr.setXYZ(
             j,
-            posAttr.getX(j) + vel.x,
-            posAttr.getY(j) + vel.y,
-            posAttr.getZ(j) + vel.z
+            posAttr.getX(j) + vel.x * k,
+            posAttr.getY(j) + vel.y * k,
+            posAttr.getZ(j) + vel.z * k
           );
         }
 
@@ -460,8 +468,6 @@
     addPart(new THREE.BoxGeometry(1.1, 0.1, 0.6), 0x8aa1b5, 0, 0.2, 0.8);
     addPart(new THREE.SphereGeometry(0.24, 12, 8), 0x00e1ff, 0, 0.2, -0.2);
 
-    // Avião posicionado à frente do ponto inicial do jogador (eixo -Z)
-
     plane.position.set(0, 0, -4);
     playerGroup.add(plane);
 
@@ -472,7 +478,7 @@
     scene.add(sun);
 
     // =========================================================
-    // ☄ SPAWN DE INIMIGOS E OBJETOS
+    // ☄ SPAWN DE INIMIGOS E OBJETOS  (AGORA MAIS RÁPIDOS)
     // =========================================================
     function spawnTarget() {
       const type = Math.random();
@@ -484,7 +490,7 @@
           rockGeo,
           new THREE.MeshStandardMaterial({ color: 0x6e5d4f, roughness: 0.95, flatShading: true })
         );
-        target.userData = { type: 'rock', hp: 3, speed: 0.2, points: 30, color: 0x887766 };
+        target.userData = { type: 'rock', hp: 3, speed: 0.48, points: 30, color: 0x887766 };
       } else if (type < 0.7) {
         const fireGeo = createSpaceRockGeometry(1.3, 2);
         target = new THREE.Mesh(
@@ -497,7 +503,7 @@
             flatShading: true
           })
         );
-        target.userData = { type: 'fire', hp: 1, speed: 0.35, points: 20, color: 0xff5500 };
+        target.userData = { type: 'fire', hp: 1, speed: 0.70, points: 20, color: 0xff5500 };
       } else {
         target = new THREE.Group();
         const body = new THREE.Mesh(
@@ -513,7 +519,7 @@
         );
         target.add(wings);
 
-        target.userData = { type: 'ship', hp: 2, speed: 0.28, points: 50, color: 0xff0044 };
+        target.userData = { type: 'ship', hp: 2, speed: 0.60, points: 50, color: 0xff0044 };
       }
 
       target.position.set(
@@ -557,11 +563,16 @@
         -60 - Math.random() * 60
       );
 
-      group.userData = { speed: 0.18, ring: ring };
+      group.userData = { speed: 0.34, ring: ring };
 
       scene.add(group);
       healItems.push(group);
     }
+
+    // =========================================================
+    // 🔫 TIRO (sai da nave, na direção da nave)
+    // =========================================================
+    const _shootQuat = new THREE.Quaternion();
 
     function shoot() {
       if (!running) return;
@@ -571,11 +582,11 @@
         new THREE.MeshBasicMaterial({ color: 0x00ffff })
       );
 
-      const spawnPos = camera.getWorldPosition(new THREE.Vector3());
+      const spawnPos = plane.getWorldPosition(new THREE.Vector3());
       bullet.position.copy(spawnPos);
 
-      const direction = new THREE.Vector3();
-      camera.getWorldDirection(direction);
+      plane.getWorldQuaternion(_shootQuat);
+      const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(_shootQuat);
 
       bullet.userData.velocity = direction.multiplyScalar(2.0);
 
@@ -616,6 +627,9 @@
       document.getElementById('final-score').textContent = score;
       document.getElementById('game-over').style.display = 'block';
       document.getElementById('start').textContent = 'INICIAR';
+
+      // ✅ Painel 3D com botões — funciona dentro do VR
+      if (renderer.xr.isPresenting) showVRGameOverPanel();
     }
 
     function resetGame() {
@@ -623,17 +637,31 @@
       score = 0;
       hits = 0;
       health = 100;
+      elapsedTime = 0;
+      difficulty = 1;
 
       for (const t of targets) scene.remove(t);
       for (const h of healItems) scene.remove(h);
       for (const b of bullets) scene.remove(b);
+      for (const e of explosions) { scene.remove(e.system); e.system.geometry.dispose(); e.system.material.dispose(); }
 
       targets = [];
       healItems = [];
       bullets = [];
+      explosions = [];
 
-      plane.position.set(0, 0, -4);
       plane.rotation.set(0, 0, 0);
+
+      if (renderer.xr.isPresenting) {
+        // em VR a nave fica presa à câmera
+        plane.position.set(0, -0.9, -4.5);
+        playerGroup.position.set(0, 0, 0);
+      } else {
+        plane.position.set(0, 0, -4);
+        playerGroup.position.set(0, 0, 0);
+      }
+
+      hideVRGameOverPanel();
 
       updateHUD();
       document.getElementById('game-over').style.display = 'none';
@@ -641,77 +669,282 @@
     }
 
     // =========================================================
-    // 🎮 CONTROLES VR (GATILHOS DA MANETE E DIRECIONAL)
+    // 🥽 PAINEL 3D DE GAME OVER (VISÍVEL DENTRO DO VR)
+    // =========================================================
+    let vrPanel = null;
+    const vrPanelButtons = [];
+    const _raycaster = new THREE.Raycaster();
+    const _rayMatrix = new THREE.Matrix4();
+
+    function makeTextMesh(text, width, height, opts = {}) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1024;
+      canvas.height = Math.max(64, Math.round(1024 * (height / width)));
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.font = opts.font || 'bold 90px Arial, sans-serif';
+      ctx.fillStyle = opts.color || '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(width, height),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true })
+      );
+      return mesh;
+    }
+
+    function makeVRButton(label, width, height, color, action) {
+      const group = new THREE.Group();
+
+      const bg = new THREE.Mesh(
+        new THREE.PlaneGeometry(width, height),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 })
+      );
+      bg.userData.action = action;
+      group.add(bg);
+      vrPanelButtons.push(bg);
+
+      const txt = makeTextMesh(label, width * 0.9, height * 0.55, {
+        font: 'bold 90px Arial, sans-serif',
+        color: '#ffffff'
+      });
+      txt.position.z = 0.01;
+      group.add(txt);
+
+      return group;
+    }
+
+    function showVRGameOverPanel() {
+      hideVRGameOverPanel();
+
+      vrPanel = new THREE.Group();
+
+      const bg = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.6, 2.8),
+        new THREE.MeshBasicMaterial({ color: 0x05070f, transparent: true, opacity: 0.95 })
+      );
+      vrPanel.add(bg);
+
+      const title = makeTextMesh('GAME OVER', 3.0, 0.5, {
+        font: 'bold 100px Arial, sans-serif',
+        color: '#ff3b4e'
+      });
+      title.position.set(0, 0.95, 0.02);
+      vrPanel.add(title);
+
+      const scoreTxt = makeTextMesh(`Pontuação: ${score}`, 2.6, 0.35, {
+        font: 'bold 70px Arial, sans-serif',
+        color: '#ffffff'
+      });
+      scoreTxt.position.set(0, 0.4, 0.02);
+      vrPanel.add(scoreTxt);
+
+      const btnRestart = makeVRButton('JOGAR NOVAMENTE', 2.5, 0.5, 0x2ecc71, () => {
+        resetGame();
+        running = true;
+        document.getElementById('start').textContent = 'JOGANDO (VR)';
+      });
+      btnRestart.position.set(0, -0.35, 0.03);
+      vrPanel.add(btnRestart);
+
+      const btnStop = makeVRButton('PARAR', 2.5, 0.5, 0x4a5568, () => {
+        resetGame();
+        running = false;
+        document.getElementById('start').textContent = 'INICIAR';
+      });
+      btnStop.position.set(0, -0.95, 0.03);
+      vrPanel.add(btnStop);
+
+      // Posiciona o painel 2,6m à frente do jogador (no mundo)
+      camera.getWorldPosition(_tmpVec);
+      const camQuat = camera.getWorldQuaternion(new THREE.Quaternion());
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camQuat);
+      vrPanel.position.copy(_tmpVec).addScaledVector(fwd, 2.6);
+      vrPanel.quaternion.copy(camQuat);
+
+      scene.add(vrPanel);
+    }
+
+    function hideVRGameOverPanel() {
+      if (!vrPanel) return;
+      scene.remove(vrPanel);
+      vrPanel.traverse(o => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) {
+          if (o.material.map) o.material.map.dispose();
+          o.material.dispose();
+        }
+      });
+      vrPanel = null;
+      vrPanelButtons.length = 0;
+    }
+
+    // =========================================================
+    // 🎮 CONTROLES VR
     // =========================================================
     controller1 = renderer.xr.getController(0);
-    controller1.addEventListener('selectstart', () => { if (running) shoot(); });
     scene.add(controller1);
 
     controller2 = renderer.xr.getController(1);
-    controller2.addEventListener('selectstart', () => { if (running) shoot(); });
     scene.add(controller2);
 
-    // Leitura dos controles e joysticks em tempo real durante a sessão VR
-    function processVRInput() {
+    // Feixe visível saindo de cada controle (ajuda a clicar nos botões)
+    function addControllerRay(controller) {
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, -1)
+      ]);
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x00ffff }));
+      line.scale.z = 6;
+      controller.add(line);
+    }
+    addControllerRay(controller1);
+    addControllerRay(controller2);
+
+    function pickVRButton(controller) {
+      if (!vrPanel || vrPanelButtons.length === 0) return null;
+
+      _rayMatrix.identity().extractRotation(controller.matrixWorld);
+      _raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+      _raycaster.ray.direction.set(0, 0, -1).applyMatrix4(_rayMatrix);
+
+      const hits = _raycaster.intersectObjects(vrPanelButtons, false);
+      return hits.length ? hits[0].object : null;
+    }
+
+    function onVRSelect(event) {
+      const controller = event.target;
+
+      // 1) Tenta clicar num botão do painel de game over
+      const btn = pickVRButton(controller);
+      if (btn && btn.userData.action) {
+        btn.userData.action();
+        return;
+      }
+
+      // 2) Se não clicou em nada, atira
+      if (running) shoot();
+    }
+
+    controller1.addEventListener('selectstart', onVRSelect);
+    controller2.addEventListener('selectstart', onVRSelect);
+
+    // Leitura dos analógicos em tempo real
+    function readVRJoystick() {
+      const out = { x: 0, y: 0 };
       const session = renderer.xr.getSession();
-      if (!session) return;
+      if (!session) return out;
 
       for (const source of session.inputSources) {
-        if (source.gamepad) {
-          const axes = source.gamepad.axes;
-          // Eixo horizontal (thumbstick / joystick X)
-          if (axes[2] !== undefined && Math.abs(axes[2]) > 0.1) {
-            plane.position.x += axes[2] * 0.15;
-          } else if (axes[0] !== undefined && Math.abs(axes[0]) > 0.1) {
-            plane.position.x += axes[0] * 0.15;
-          }
+        if (!source.gamepad) continue;
+        const axes = source.gamepad.axes;
 
-          // Eixo vertical (thumbstick / joystick Y)
-          if (axes[3] !== undefined && Math.abs(axes[3]) > 0.1) {
-            plane.position.y -= axes[3] * 0.15;
-          } else if (axes[1] !== undefined && Math.abs(axes[1]) > 0.1) {
-            plane.position.y -= axes[1] * 0.15;
-          }
-        }
+        // Prefere thumbstick (índices 2/3), senão usa 0/1 (touchpad)
+        let ax = axes.length > 2 && axes[2] !== undefined ? axes[2] : axes[0];
+        let ay = axes.length > 2 && axes[3] !== undefined ? axes[3] : axes[1];
+
+        if (ax === undefined) ax = 0;
+        if (ay === undefined) ay = 0;
+
+        if (Math.abs(ax) > 0.15) out.x += ax;
+        if (Math.abs(ay) > 0.15) out.y -= ay; // joystick pra cima = subir
       }
+
+      return out;
     }
+
+    // =========================================================
+    // 🥽 TROCA DE LAYOUT AO ENTRAR / SAIR DO VR
+    // =========================================================
+    renderer.xr.addEventListener('sessionstart', () => {
+      // ✅ A NAVE PASSA A SER FILHA DA CÂMERA:
+      // assim ela fica SEMPRE à frente do visor, independente de onde
+      // o headset estiver olhando (resolve o problema de ficar atrás).
+      camera.add(plane);
+      plane.position.set(0, -0.9, -4.5);
+      plane.rotation.set(0, 0, 0);
+
+      // O "+" do HUD não faz sentido no VR
+      document.getElementById('aim').style.display = 'none';
+    });
+
+    renderer.xr.addEventListener('sessionend', () => {
+      playerGroup.add(plane);
+      plane.position.set(0, 0, -4);
+      plane.rotation.set(0, 0, 0);
+      playerGroup.position.set(0, 0, 0);
+
+      document.getElementById('aim').style.display = 'block';
+      hideVRGameOverPanel();
+    });
 
     // =========================================================
     // 🔄 LOOP PRINCIPAL
     // =========================================================
     function update() {
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const k = dt * 60;                 // normaliza p/ ~1 em 60fps
+      const inVR = renderer.xr.isPresenting;
+
       if (running) {
-        processVRInput(); // Atualiza movimentos das manetes VR
+        elapsedTime += dt;
+        difficulty = 1 + Math.min(elapsedTime / 60, 0.8);  // até +80% de velocidade
 
-        const speed = 0.14;
-        let targetRoll = 0;
+        const speed = 0.14 * k;
+        let moveX = 0;
+        let moveY = 0;
 
-        if (keys['a']) { plane.position.x -= speed; targetRoll = 0.4; }
-        if (keys['d']) { plane.position.x += speed; targetRoll = -0.4; }
-        if (keys['w']) plane.position.y += speed;
-        if (keys['s']) plane.position.y -= speed;
+        if (keys['a']) moveX -= speed;
+        if (keys['d']) moveX += speed;
+        if (keys['w']) moveY += speed;
+        if (keys['s']) moveY -= speed;
 
-        plane.position.x = THREE.MathUtils.clamp(plane.position.x, -8, 8);
-        plane.position.y = THREE.MathUtils.clamp(plane.position.y, -4, 5);
+        if (inVR) {
+          // ---- MODO VR: o analógico move o JOGADOR pelo espaço ----
+          const j = readVRJoystick();
+          moveX += j.x * 0.16 * k;
+          moveY += j.y * 0.16 * k;
 
-        plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, targetRoll, 0.1);
+          playerGroup.position.x = THREE.MathUtils.clamp(playerGroup.position.x + moveX, -8, 8);
+          playerGroup.position.y = THREE.MathUtils.clamp(playerGroup.position.y + moveY, -3, 4);
 
-        // Não reposicione a câmera pela nave: no Meta Quest, a câmera é
-        // controlada pelo rastreamento real da cabeça (WebXR).
-        // O joystick move apenas a nave no espaço do jogo.
+          // inclinação lateral da nave (relativa à cabeça)
+          const targetRoll = THREE.MathUtils.clamp(-moveX * 14, -0.5, 0.5);
+          plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, targetRoll, 0.12);
+        } else {
+          // ---- MODO PC: comportamento original ----
+          plane.position.x = THREE.MathUtils.clamp(plane.position.x + moveX, -8, 8);
+          plane.position.y = THREE.MathUtils.clamp(plane.position.y + moveY, -4, 5);
 
-        updateHyperspaceLines();
+          let targetRoll = 0;
+          if (keys['a']) targetRoll = 0.4;
+          if (keys['d']) targetRoll = -0.4;
+          plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, targetRoll, 0.1);
+        }
 
-        if (Math.random() < 0.03 && targets.length < 18) spawnTarget();
-        if (Math.random() < 0.005 && healItems.length < 2) spawnHealItem();
+        updateHyperspaceLines(k);
 
+        // Posição da nave no MUNDO (funciona nos dois modos)
+        plane.getWorldPosition(_planeWorld);
+
+        // Spawns (um pouco mais frequentes conforme a dificuldade sobe)
+        if (Math.random() < 0.03 * k * difficulty && targets.length < 20) spawnTarget();
+        if (Math.random() < 0.005 * k && healItems.length < 2) spawnHealItem();
+
+        // ---- Itens de cura ----
         for (let i = healItems.length - 1; i >= 0; i--) {
           const item = healItems[i];
-          item.position.z += item.userData.speed;
-          item.userData.ring.rotation.z += 0.03;
+          item.position.z += item.userData.speed * k;
+          item.userData.ring.rotation.z += 0.03 * k;
 
-          if (item.position.distanceTo(plane.position) < 2.0) {
-            playPositionalSound(healBuffer, plane.position, 1.0);
+          if (item.position.distanceTo(_planeWorld) < 2.0) {
+            playPositionalSound(healBuffer, _planeWorld, 1.0);
             createExplosion(item.position, 0x00ffff);
             heal(25);
             scene.remove(item);
@@ -725,15 +958,16 @@
           }
         }
 
+        // ---- Alvos / asteroides (agora multiplicados pela dificuldade) ----
         for (let i = targets.length - 1; i >= 0; i--) {
           const t = targets[i];
-          t.position.z += t.userData.speed;
-          t.rotation.x += t.userData.rotX;
-          t.rotation.y += t.userData.rotY;
+          t.position.z += t.userData.speed * difficulty * k;
+          t.rotation.x += t.userData.rotX * k;
+          t.rotation.y += t.userData.rotY * k;
 
-          if (t.position.distanceTo(plane.position) < 2.0) {
+          if (t.position.distanceTo(_planeWorld) < 2.0) {
             createExplosion(t.position, 0xff2200);
-            playPositionalSound(hitBuffer, plane.position, 1.0);
+            playPositionalSound(hitBuffer, _planeWorld, 1.0);
             scene.remove(t);
             targets.splice(i, 1);
             takeDamage(25);
@@ -746,9 +980,10 @@
           }
         }
 
+        // ---- Tiros ----
         for (let i = bullets.length - 1; i >= 0; i--) {
           const bullet = bullets[i];
-          bullet.position.add(bullet.userData.velocity);
+          bullet.position.addScaledVector(bullet.userData.velocity, k);
 
           if (bullet.position.length() > 220) {
             scene.remove(bullet);
@@ -779,7 +1014,7 @@
           }
         }
 
-        updateExplosions();
+        updateExplosions(k);
       }
 
       renderer.render(scene, camera);
@@ -796,6 +1031,7 @@
     };
 
     document.getElementById('reset').onclick = resetGame;
+
     document.getElementById('restart').onclick = () => {
       resetGame();
       running = true;
