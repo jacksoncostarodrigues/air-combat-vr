@@ -460,7 +460,7 @@
     addPart(new THREE.BoxGeometry(1.1, 0.1, 0.6), 0x8aa1b5, 0, 0.2, 0.8);
     addPart(new THREE.SphereGeometry(0.24, 12, 8), 0x00e1ff, 0, 0.2, -0.2);
 
-    // Avião posicionado à frente do jogador
+    // Avião posicionado à frente do ponto inicial do jogador (eixo -Z)
 
     plane.position.set(0, 0, -4);
     playerGroup.add(plane);
@@ -696,8 +696,9 @@
 
         plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, targetRoll, 0.1);
 
-        camera.position.x = plane.position.x;
-        camera.position.y = 1.4 + plane.position.y;
+        // Não reposicione a câmera pela nave: no Meta Quest, a câmera é
+        // controlada pelo rastreamento real da cabeça (WebXR).
+        // O joystick move apenas a nave no espaço do jogo.
 
         updateHyperspaceLines();
 
