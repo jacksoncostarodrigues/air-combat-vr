@@ -151,10 +151,12 @@
   </div>
 
   <div id="game-over">
-    <h1>GAME OVER</h1>
-    <p>Sua nave foi destruída no espaço!</p>
-    <p>Pontuação Final: <span id="final-score">0</span></p>
-    <button id="restart">JOGAR NOVAMENTE</button>
+  <h1>GAME OVER</h1>
+  <p>Sua nave foi destruída no espaço!</p>
+  <p>Pontuação Final: <span id="final-score">0</span></p>
+
+  <button id="restart">JOGAR NOVAMENTE</button>
+  <button id="menu">VOLTAR AO MENU</button>
   </div>
 
   <script type="module">
@@ -451,7 +453,9 @@
     addPart(new THREE.BoxGeometry(1.1, 0.1, 0.6), 0x8aa1b5, 0, 0.2, 0.8);
     addPart(new THREE.SphereGeometry(0.24, 12, 8), 0x00e1ff, 0, 0.2, -0.2);
 
-    plane.position.set(0, 0, 3);
+    // Avião posicionado à frente do jogador
+
+    plane.position.set(0, 0, -4);
     playerGroup.add(plane);
 
     // Iluminação
@@ -621,7 +625,7 @@
       healItems = [];
       bullets = [];
 
-      plane.position.set(0, 0, 3);
+      plane.position.set(0, 0, -4);
       plane.rotation.set(0, 0, 0);
 
       updateHUD();
@@ -789,6 +793,14 @@
       running = true;
       document.getElementById('start').textContent = 'JOGANDO';
     };
+
+    document.getElementById('menu').onclick = () => {
+  resetGame();
+  running = false;
+
+  document.getElementById('start').textContent = 'INICIAR';
+  document.getElementById('game-over').style.display = 'none';
+};
 
     document.addEventListener('keydown', event => {
       keys[event.key.toLowerCase()] = true;
